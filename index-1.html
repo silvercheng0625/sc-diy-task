@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天天向上小樂園</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>天天向上小樂園</h1>
+            <div class="user-management">
+                <select id="user-select"></select>
+                <input type="text" id="new-user-name" placeholder="新使用者名稱">
+                <button id="add-user-btn">新增使用者</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="task-section">
+                <h2>今天的任務</h2>
+                <div class="task-input-container">
+                    <input type="text" id="task-input" placeholder="新增一個新任務吧！">
+                    <button id="add-task-btn">新增任務</button>
+                </div>
+                <ul id="task-list" class="task-list"></ul>
+            </div>
+
+            <div class="right-panel">
+                <div class="calendar-section">
+                    <h2>學習日曆</h2>
+                    <div class="calendar-header">
+                        <button id="prev-month-btn">&lt;</button>
+                        <h3 id="month-year"></h3>
+                        <button id="next-month-btn">&gt;</button>
+                    </div>
+                    <div class="calendar-grid">
+                        <div class="weekday">日</div>
+                        <div class="weekday">一</div>
+                        <div class="weekday">二</div>
+                        <div class="weekday">三</div>
+                        <div class="weekday">四</div>
+                        <div class="weekday">五</div>
+                        <div class="weekday">六</div>
+                    </div>
+                    <div id="calendar-dates" class="calendar-dates"></div>
+                </div>
+
+                <div class="history-section">
+                    <h2>歷史紀錄</h2>
+                    <p id="history-date">點擊日曆查看紀錄</p>
+                    <ul id="history-list"></ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 鼓勵語彈跳視窗 -->
+    <div id="encouragement-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <p id="encouragement-text"></p>
+        </div>
+    </div>
+
+    <!-- 上月總結彈跳視窗 -->
+    <div id="summary-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-summary-btn">&times;</span>
+            <h2>上月學習總結</h2>
+            <p id="summary-content"></p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>```
+
+---
+
+### **style.css (CSS 樣式)**
+
+```css
+:root {
+    --primary-color: #4a90e2;
+    --secondary-color: #f5a623;
+    --background-color: #f8f9fa;
+    --font-color: #333;
+    --light-gray: #ddd;
+    --white: #fff;
+    --green: #28a745;
+    --red: #dc3545;
+}
+
+body {
+    font-family: 'Microsoft JhengHei', 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--background-color);
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: var(--font-color);
+}
+
+.app-container {
+    width: 100%;
+    max-width: 1200px;
+    background: var(--white);
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+header {
+    background-color: var(--primary-color);
+    color: var(--white);
+    padding: 20px;
+    text-align: center;
+    position: relative;
+}
+
+.user-management {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.user-management select, .user-management input, .user-management button {
+    margin-left: 10px;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 5px;
+}
+
+main {
+    display: flex;
+    padding: 20px;
+}
+
+.task-section {
+    flex: 2;
+    padding-right: 20px;
+    border-right: 1px solid var(--light-gray);
+}
+
+h2 {
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--secondary-color);
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+.task-input-container {
+    display: flex;
+    margin-bottom: 20px;
+}
+
+#task-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--light-gray);
+    border-radius: 5px 0 0 5px;
+    font-size: 16px;
+}
+
+#add-task-btn {
+    padding: 10px 20px;
+    background-color: var(--secondary-color);
+    color: var(--white);
+    border: none;
+    border-radius: 0 5px 5px 0;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+#add-task-btn:hover {
+    background-color: #e0940c;
+}
+
+.task-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.task-list li {
+    background: #fdfdfd;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    border-left: 5px solid var(--primary-color);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    cursor: grab;
+}
+
+.task-list li.completed {
+    border-left-color: var(--green);
+    text-decoration: line-through;
+    color: #888;
+}
+
+.task-list li .task-text {
+    flex-grow: 1;
+}
+
+.task-list li .task-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.task-list li button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #888;
+    transition: color 0.3s;
+}
+
+.task-list li .edit-btn:hover { color: var(--primary-color); }
+.task-list li .copy-btn:hover { color: var(--secondary-color); }
+.task-list li .delete-btn:hover { color: var(--red); }
+.task-list li .complete-checkbox {
+    margin-right: 15px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.right-panel {
+    flex: 1;
+    padding-left: 20px;
+}
+
+.calendar-section, .history-section {
+    margin-bottom: 20px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.calendar-header button {
+    background: none;
+    border: 1px solid var(--light-gray);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+}
+
+.calendar-grid, .calendar-dates {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    text-align: center;
+}
+
+.weekday {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.calendar-dates .date {
+    padding: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.calendar-dates .date:hover {
+    background-color: #e9ecef;
+}
+
+.calendar-dates .date.today {
+    background-color: var(--secondary-color);
+    color: var(--white);
+}
+
+.calendar-dates .date.selected {
+    background-color: var(--primary-color);
+    color: var(--white);
+}
+
+.calendar-dates .date.has-record {
+    border: 2px solid var(--green);
+}
+
+#history-list {
+    list-style: none;
+    padding: 0;
+}
+
+#history-list li {
+    padding: 8px;
+    border-bottom: 1px solid var(--light-gray);
+}
+
+#history-list li.completed {
+    text-decoration: line-through;
+    color: #888;
+}
+
+/* 彈跳視窗樣式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: var(--white);
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    position: relative;
+    width: 90%;
+    max-width: 400px;
+}
+
+.close-btn, .close-summary-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    color: var(--light-gray);
+}
+.close-btn:hover, .close-summary-btn:hover {
+    color: #555;
+}
+#encouragement-text, #summary-content {
+    font-size: 20px;
+    color: var(--primary-color);
+}
