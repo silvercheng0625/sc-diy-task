@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天天向上小樂園</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // 確保在 Canvas 環境中，這些全域變數會被自動提供
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
+
+        // 全域變數以供存取
+        window.app = initializeApp(firebaseConfig);
+        window.auth = getAuth(app);
+        window.db = getFirestore(app);
+        window.userId = '';
+        window.isAuthReady = false;
+
+        // 在應用程式啟動時處理認證
+        onAuthStateChanged(window.auth, async (user) => {
+            if (user) {
+                window.userId = user.uid;
+                console.log("Firebase signed in. User ID:", window.userId);
+            } else {
+                console.log("No user signed in. Signing in anonymously.");
+                try {
+                    // 如果沒有初始令牌，則匿名登入
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(window.auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(window.auth);
+                    }
+                    window.userId = window.auth.currentUser.uid;
+                } catch (error) {
+                    console.error("Firebase auth failed:", error);
+                }
+            }
+            // 認證完成，可以開始執行 Firestore 相關操作
+            window.isAuthReady = true;
+            document.dispatchEvent(new Event('auth-ready'));
+        });
+    </script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- SortableJS for drag-and-drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f0f4f8;
+        }
+        /* 隱藏日曆的預設箭頭 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            opacity: 0;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        .task-card {
+            touch-action: none;
+            user-select: none;
+        }
+        /* 拖曳時的樣式 */
+        .sortable-ghost {
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app" class="max-w-6xl mx-auto bg-white rounded-3xl shadow-xl p-6 md:p-10">
+        <!-- 應用程式主介面 -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-blue-600 mb-2 drop-shadow-md">
+                天天向上小樂園
+            </h1>
+            <p id="appSubtitle" class="text-lg md:text-xl text-gray-500">
+                給小小學習者的專屬任務板！
+            </p>
+            <!-- 顯示使用者ID，方便多人共用 -->
+            <div id="userInfo" class="mt-4 text-sm text-gray-400">
+                使用者 ID: <span id="userIdDisplay">載入中...</span>
+            </div>
+        </div>
+
+        <!-- 功能區塊 -->
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
+            <!-- 日期選擇器 -->
+            <div class="flex items-center gap-2 bg-purple-100 p-3 rounded-xl shadow-inner">
+                <label for="datePicker" class="text-lg text-purple-800 font-bold">選擇日期:</label>
+                <input type="date" id="datePicker"
+                       class="p-2 rounded-xl border-2 border-purple-300 focus:outline-none focus:border-purple-500 transition-colors duration-200">
+            </div>
+            
+            <div class="flex flex-wrap items-center justify-center gap-4">
+                <!-- 上個月總結按鈕 -->
+                <button id="monthlySummaryBtn"
+                        class="bg-yellow-500 text-white font-bold py-3 px-6 rounded-xl
+                               shadow-lg hover:bg-yellow-600 transition-colors duration-200">
+                    上月完成總結
+                </button>
+            </div>
+        </div>
+
+        <!-- 任務輸入區 -->
+        <div class="bg-blue-100 p-6 rounded-2xl shadow-inner mb-8">
+            <h2 class="text-2xl font-bold text-blue-800 mb-4">新增今日任務</h2>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" id="taskInput" placeholder="例如: 閱讀故事書30分鐘"
+                       class="flex-grow p-3 rounded-xl border-2 border-blue-300 focus:outline-none focus:border-blue-500 shadow-sm transition-colors duration-200">
+                <button id="addTaskBtn"
+                        class="bg-blue-500 text-white font-bold py-3 px-6 rounded-xl
+                               shadow-lg hover:bg-blue-600 transition-colors duration-200">
+                    新增任務
+                </button>
+            </div>
+        </div>
+
+        <!-- 任務列表區 -->
+        <div id="taskList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- 任務卡片會在這裡動態生成 -->
+        </div>
+
+        <!-- 訊息與獎勵區 -->
+        <div id="messageBox" class="mt-8 bg-green-100 p-6 rounded-2xl shadow-md text-center hidden">
+            <p id="messageText" class="text-xl md:text-2xl font-bold text-green-700 mb-2">
+                太棒了！你又完成了一項任務！
+            </p>
+            <p id="starCount" class="text-3xl font-extrabold text-yellow-500">
+                ⭐ 總計: 0
+            </p>
+        </div>
+    </div>
+
+    <!-- 載入中的提示與 Modal -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-6 rounded-xl shadow-lg flex items-center space-x-3">
+            <div class="animate-spin rounded-full h-8 w-8 border-4 border-t-blue-500 border-gray-200"></div>
+            <span class="text-lg text-gray-700 font-medium">AI 助手正在努力思考中...</span>
+        </div>
+    </div>
+
+    <!-- 編輯任務的 Modal -->
+    <div id="editModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-3xl shadow-xl w-11/12 md:w-1/2">
+            <h3 class="text-2xl font-bold text-blue-600 mb-4">編輯任務</h3>
+            <input type="text" id="editTaskInput" class="w-full p-3 rounded-xl border-2 border-blue-300 focus:outline-none focus:border-blue-500 shadow-sm transition-colors duration-200 mb-4">
+            <div class="flex justify-end gap-4">
+                <button id="saveEditBtn" class="bg-green-500 text-white font-bold py-2 px-4 rounded-xl shadow-md hover:bg-green-600 transition-colors duration-200">
+                    儲存
+                </button>
+                <button id="cancelEditBtn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-xl shadow-md hover:bg-gray-400 transition-colors duration-200">
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 總結 Modal -->
+    <div id="summaryModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-3xl shadow-xl w-11/12 md:w-2/3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-blue-600">上月完成任務總結</h3>
+                <button id="closeSummaryBtn" class="text-gray-500 hover:text-gray-700 text-2xl">
+                    &times;
+                </button>
+            </div>
+            <div id="summaryContent" class="prose max-w-none text-gray-700">
+                <!-- AI 生成的總結內容會在這裡 -->
+                <p>載入中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 我已將 `query` 和 `where` 新增到這裡，以便在應用程式邏輯中使用
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 全域變數，確保在認證完成後才使用
+        let db, auth, userId;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // 取得 DOM 元素
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const datePicker = document.getElementById('datePicker');
+        const taskInput = document.getElementById('taskInput');
+        const addTaskBtn = document.getElementById('addTaskBtn');
+        const taskList = document.getElementById('taskList');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const starCountElement = document.getElementById('starCount');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const editModal = document.getElementById('editModal');
+        const editTaskInput = document.getElementById('editTaskInput');
+        const saveEditBtn = document.getElementById('saveEditBtn');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+        const monthlySummaryBtn = document.getElementById('monthlySummaryBtn');
+        const summaryModal = document.getElementById('summaryModal');
+        const summaryContent = document.getElementById('summaryContent');
+        const closeSummaryBtn = document.getElementById('closeSummaryBtn');
+
+        // 初始化變數
+        let tasks = [];
+        let stars = 0;
+        let selectedDate = new Date().toISOString().split('T')[0];
+        let editingTaskId = null;
+
+        // API 相關
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${""}`;
+        const apiCache = {};
+        let retries = 0;
+        const maxRetries = 3;
+        const baseDelay = 1000;
+
+        // 延遲執行，直到 Firebase 認證完成
+        document.addEventListener('auth-ready', () => {
+            db = window.db;
+            auth = window.auth;
+            userId = window.userId;
+            userIdDisplay.textContent = userId;
+            
+            // 初始化日曆
+            datePicker.value = selectedDate;
+            datePicker.addEventListener('change', (e) => {
+                selectedDate = e.target.value;
+                listenForTasks();
+            });
+
+            // 開始監聽 Firestore 的任務
+            listenForTasks();
+        });
+
+        // 呼叫 Gemini API
+        async function getGeminiResponse(prompt) {
+            if (apiCache[prompt]) return apiCache[prompt];
+
+            loadingOverlay.classList.remove('hidden');
+
+            try {
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }]
+                };
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
+
+                const result = await response.json();
+                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || '無法生成回應。';
+                
+                apiCache[prompt] = text;
+                loadingOverlay.classList.add('hidden');
+                return text;
+            } catch (error) {
+                loadingOverlay.classList.add('hidden');
+                console.error('API 呼叫失敗:', error);
+                if (retries < maxRetries) {
+                    retries++;
+                    const delay = baseDelay * Math.pow(2, retries);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return getGeminiResponse(prompt);
+                }
+                return '目前無法取得AI協助，請稍後再試。';
+            }
+        }
+
+        // 監聽 Firestore 的任務列表
+        function listenForTasks() {
+            if (!db || !userId || !selectedDate) return;
+            const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+            // 現在 query 和 where 已經被正確匯入，所以不會再報錯
+            const q = query(tasksCollectionRef, where("date", "==", selectedDate));
+            onSnapshot(q, (snapshot) => {
+                tasks = [];
+                let completedTasks = 0;
+                snapshot.forEach(doc => {
+                    const task = { id: doc.id, ...doc.data() };
+                    tasks.push(task);
+                    if (task.completed) completedTasks++;
+                });
+                renderTasks();
+                stars = completedTasks;
+                starCountElement.textContent = `⭐ 總計: ${stars}`;
+            }, (error) => {
+                console.error("Error fetching tasks:", error);
+                taskList.innerHTML = `<p class="text-center text-red-500 col-span-full">載入任務失敗，請檢查網路連線。</p>`;
+            });
+        }
+
+        // 渲染任務列表
+        function renderTasks() {
+            taskList.innerHTML = '';
+            if (tasks.length === 0) {
+                taskList.innerHTML = `<p class="text-center text-gray-400 col-span-full">這天還沒有任務喔，快來新增吧！</p>`;
+            }
+            
+            // 根據 tasks 陣列的順序來渲染
+            tasks.sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(task => {
+                const taskCard = document.createElement('div');
+                taskCard.className = `task-card bg-white p-5 rounded-2xl shadow-md transition-all duration-300 transform hover:scale-105 relative border-2 border-gray-200 ${task.completed ? 'opacity-60 bg-green-50 border-green-400' : ''}`;
+                taskCard.dataset.id = task.id;
+
+                let content = `<p class="text-lg font-medium text-gray-700 mb-4">${task.text}</p>`;
+
+                // 操作按鈕
+                content += `<div class="flex flex-wrap justify-end gap-2 text-sm">`;
+                if (!task.completed) {
+                    content += `<button onclick="completeTask('${task.id}')"
+                                    class="bg-green-500 text-white font-bold py-1 px-3 rounded-full shadow-sm hover:bg-green-600 transition-colors duration-200">
+                                    <i class="fas fa-check"></i> 完成
+                                </button>`;
+                    content += `<button onclick="editTask('${task.id}', '${task.text.replace(/'/g, "\\'")}')"
+                                    class="bg-blue-500 text-white font-bold py-1 px-3 rounded-full shadow-sm hover:bg-blue-600 transition-colors duration-200">
+                                    <i class="fas fa-edit"></i> 編輯
+                                </button>`;
+                    content += `<button onclick="copyTask('${task.id}')"
+                                    class="bg-yellow-500 text-white font-bold py-1 px-3 rounded-full shadow-sm hover:bg-yellow-600 transition-colors duration-200">
+                                    <i class="fas fa-copy"></i> 複製
+                                </button>`;
+                } else {
+                    content += `<span class="text-sm font-bold text-green-500">已完成 🎉</span>`;
+                }
+                content += `<button onclick="deleteTask('${task.id}')"
+                                class="bg-red-500 text-white font-bold py-1 px-3 rounded-full shadow-sm hover:bg-red-600 transition-colors duration-200">
+                                <i class="fas fa-trash"></i> 刪除
+                            </button>`;
+                content += `</div>`;
+                
+                taskCard.innerHTML = content;
+                taskList.appendChild(taskCard);
+            });
+
+            // 初始化拖曳排序功能
+            new Sortable(taskList, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: async (evt) => {
+                    // 重新排列 tasks 陣列
+                    const movedItem = tasks.splice(evt.oldIndex, 1)[0];
+                    tasks.splice(evt.newIndex, 0, movedItem);
+
+                    // 更新 Firestore 中的 order
+                    for (let i = 0; i < tasks.length; i++) {
+                        const taskId = tasks[i].id;
+                        const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+                        await updateDoc(taskDocRef, { order: i });
+                    }
+                }
+            });
+        }
+        
+        // --- 任務操作函式 ---
+        // 完成任務
+        window.completeTask = async (taskId) => {
+            const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+            await updateDoc(taskDocRef, { completed: true });
+            
+            const prompts = [
+                `為一個小學一年級的學生，在他完成一項任務後，生成一句簡短、充滿讚美與鼓勵的話語。`,
+                `當小學生完成學習任務後，生成一句有趣且能讓他感到驕傲的鼓勵句。`,
+                `給小學一年級學生一句溫暖又充滿能量的鼓勵話語，讓他知道自己很棒。`
+            ];
+            const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+            const message = await getGeminiResponse(randomPrompt);
+            messageText.textContent = message.replace(/["'「」]/g, '');
+            messageBox.classList.remove('hidden');
+        };
+
+        // 刪除任務
+        window.deleteTask = async (taskId) => {
+            if (confirm("確定要刪除這項任務嗎？")) { // 使用 confirm 替代自定義 Modal
+                const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+                await deleteDoc(taskDocRef);
+                messageBox.classList.add('hidden');
+            }
+        };
+
+        // 複製任務
+        window.copyTask = async (taskId) => {
+            const originalTask = tasks.find(t => t.id === taskId);
+            if (originalTask) {
+                const newTask = {
+                    text: `${originalTask.text} (複製)`,
+                    date: selectedDate,
+                    completed: false,
+                    order: tasks.length 
+                };
+                const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+                await addDoc(tasksCollectionRef, newTask);
+                messageBox.classList.add('hidden');
+            }
+        };
+
+        // 編輯任務
+        window.editTask = (taskId, taskText) => {
+            editingTaskId = taskId;
+            editTaskInput.value = taskText;
+            editModal.classList.remove('hidden');
+        };
+
+        saveEditBtn.addEventListener('click', async () => {
+            if (editingTaskId) {
+                const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, editingTaskId);
+                await updateDoc(taskDocRef, { text: editTaskInput.value });
+                editModal.classList.add('hidden');
+                editingTaskId = null;
+            }
+        });
+
+        cancelEditBtn.addEventListener('click', () => {
+            editModal.classList.add('hidden');
+            editingTaskId = null;
+        });
+
+        // 新增任務
+        addTaskBtn.addEventListener('click', async () => {
+            const taskText = taskInput.value.trim();
+            if (taskText && db && userId) {
+                const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+                const newTask = {
+                    text: taskText,
+                    date: selectedDate,
+                    completed: false,
+                    order: tasks.length 
+                };
+                await addDoc(tasksCollectionRef, newTask);
+                taskInput.value = '';
+                messageBox.classList.add('hidden');
+            }
+        });
+
+        // 每月總結
+        monthlySummaryBtn.addEventListener('click', async () => {
+            if (!db || !userId) return;
+
+            loadingOverlay.classList.remove('hidden');
+            summaryModal.classList.remove('hidden');
+            summaryContent.innerHTML = `<p class="text-center text-gray-400">正在生成上個月的學習總結...</p>`;
+
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth(); // 0-11
+            const lastMonth = month === 0 ? 12 : month;
+            const lastMonthYear = month === 0 ? year - 1 : year;
+            
+            const startDate = new Date(lastMonthYear, lastMonth - 1, 1).toISOString().split('T')[0];
+            const endDate = new Date(lastMonthYear, lastMonth, 0).toISOString().split('T')[0];
+
+            // 取得上個月的任務
+            const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+            const allTasksSnapshot = await getDocs(tasksCollectionRef);
+            let lastMonthTasks = [];
+            let lastMonthCompletedCount = 0;
+            allTasksSnapshot.forEach(doc => {
+                const task = doc.data();
+                if (task.date >= startDate && task.date <= endDate) {
+                    lastMonthTasks.push(task);
+                    if (task.completed) lastMonthCompletedCount++;
+                }
+            });
+
+            // 呼叫 Gemini 進行總結
+            const summaryPrompt = `
+                為一個小學一年級的學生，根據以下上個月的學習任務和完成狀況，生成一份簡短、鼓勵且有趣的總結報告。
+                總結報告應包含：
+                1. 總結上個月的努力和成就。
+                2. 提到完成的任務總數 (${lastMonthCompletedCount} 個)。
+                3. 用一個可愛的比喻來稱讚他。
+                4. 鼓勵他這個月繼續加油。
+                
+                上個月的任務清單: ${JSON.stringify(lastMonthTasks)}
+            `;
+
+            const summary = await getGeminiResponse(summaryPrompt);
+            summaryContent.innerHTML = summary.replace(/["'「」]/g, '');
+            loadingOverlay.classList.add('hidden');
+        });
+
+        closeSummaryBtn.addEventListener('click', () => {
+            summaryModal.classList.add('hidden');
+        });
+
+    </script>
+</body>
+</html>
